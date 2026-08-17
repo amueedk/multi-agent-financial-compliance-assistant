@@ -1,0 +1,6 @@
+Txn_Date,Ref_ID,Vendor_Desc,Amt,Status,Notes,Dept_Code
+26-08-12,TX-010,  AWS* CLOUD SERVICES,-4500.00,PENDING,monthly hosting,ENG-01
+08/14/26,,slack technologies inc,-1200,cleared,,
+2026.08.15,TX-012,UBER   TRVL,-45.50,CLEARED,sales trip,SLS-99
+08-16-2026,TX-013,  Datadog Inc , -3400.00 , PENDING ,,ENG-01
+Aug 20 2026,TX-014,  AMAZON WEB SERV , -1200.00, PENDING, standard fees, ENG-01

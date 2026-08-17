@@ -1,0 +1,57 @@
+[
+  {
+    "name": "Cloudflare Invoice — Net-30 + Amount Limit",
+    "query": "Check this Cloudflare invoice for compliance with our procurement and payment policy",
+    "raw_data": "INVOICE #9982-A\nDAT: 08-10-2026\nVndor: Cloudflare, Inc.\n---\nBILLED TO:\nAcme Corp Accounts Payable\nATTN: Network Infrastructure\n---\nTotal Amnt Due: $ 8,450.00\nTax: 0.00\n---\nNotes: Enterprise plan annual. Please remit payment within Net30 terms. Late fees apply.",
+    "input_type": "invoice",
+    "expected_keywords": [
+      "cloudflare", "8450", "net-30", "section 4.2", "5000", "violation", "policy", "eng-01"
+    ],
+    "expect_no_action": true,
+    "description": "Cloudflare invoice exceeds $5,000 monthly limit (Section 4.2.1). Should detect violation."
+  },
+  {
+    "name": "Messy CSV Ledger — Multi-Vendor Check",
+    "query": "Analyze the transactions in this messy CSV ledger for corporate policy violations",
+    "raw_data": "Txn_Date,Ref_ID,Vendor_Desc,Amt,Status,Notes,Dept_Code\n2026-08-12,TX-9921,AWS* CLOUD SERVICES,-4500.00,PENDING,monthly hosting,ENG-01\n08/14/26,,slack technologies inc,-1200,cleared,,\n26-08-15,TX-9925,UBER   TRVL,-45.50,CLEARED,sales trip,SLS-99\n08-16-2026,TX-9926,  Datadog Inc , -3400.00 , PENDING ,,ENG-01",
+    "input_type": "csv",
+    "expected_keywords": [
+      "aws", "slack", "datadog", "4500", "3400", "policy", "eng-01", "violation"
+    ],
+    "expect_no_action": true,
+    "description": "Multiple cloud vendors with amounts >$2,000. Checks data cleaning + policy analysis."
+  },
+  {
+    "name": "AWS Overage — VP Authorization Check",
+    "query": "Does the $5,200 AWS overage fee require VP of Engineering secondary authorization?",
+    "raw_data": "Aug 20 2026,TX-9928,  AMAZON WEB SERV , -5200.00, PENDING, overage fees, ENG-01",
+    "input_type": "csv",
+    "expected_keywords": [
+      "authorization", "5000", "vp", "engineering", "aws", "secondary", "5200"
+    ],
+    "expect_no_action": true,
+    "description": "AWS spend $5,200 exceeds $5,000 monthly limit requiring VP auth per Section 4.2.1."
+  },
+  {
+    "name": "AWS Invoice — Due Upon Receipt Violation",
+    "query": "Flag any invoices with Due Upon Receipt payment terms that exceed $2,000",
+    "raw_data": "== INVOICE ==\nNo: INV-AWS-88219\nDate::: 08/25/26\n\nTo: ACME Corp (Dept: ENG-01)\nFrom: Amazon Web Services (AWS)\n\nDescription                  Amount\n-----------------------------------\nEC2 Instances (us-east-1)    $ 4200.50\nS3 Standard Storage          $  800.00\nData Transfer Out            $  199.50\n\nTOTAL DUE NOW:::: $ 5200.00\nTerms: Due upon receipt.",
+    "input_type": "invoice",
+    "expected_keywords": [
+      "due upon receipt", "5200", "flag", "violation", "net-30", "immediate", "2000"
+    ],
+    "expect_no_action": true,
+    "description": "AWS invoice with 'Due upon receipt' terms violates Net-30 policy for invoices >$2,000."
+  },
+  {
+    "name": "Policy Lookup — Spending Thresholds",
+    "query": "What is the department code for cloud infrastructure expenses and what is the spending limit before VP Engineering approval is required?",
+    "raw_data": "",
+    "input_type": "query",
+    "expected_keywords": [
+      "eng-01", "5000", "vp", "engineering", "authorization", "cloud", "department"
+    ],
+    "expect_no_action": false,
+    "description": "Plain query to test pure RAG retrieval without data extraction. Should return Section 4.2.1 info."
+  }
+]

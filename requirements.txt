@@ -1,0 +1,28 @@
+# ── Core LangChain / LangGraph ─────────────────────────────────────────────
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-ollama>=0.1.0
+langgraph>=0.1.0
+
+# ── Local Embeddings & Vector Store ──────────────────────────────────────────
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+
+# ── Data Processing (Extraction Sandbox) ─────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ── FastAPI Dashboard ─────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+aiofiles>=23.0.0
+httpx>=0.27.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+pydantic>=2.0
+python-dotenv>=1.0.0
+tabulate>=0.9.0
+rich>=13.0.0
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+rouge-score>=0.1.2
