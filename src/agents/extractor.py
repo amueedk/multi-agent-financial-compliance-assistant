@@ -17,11 +17,11 @@ import json
 from typing import Any, Dict
 
 from langchain_core.messages import AIMessage
-from langchain_ollama import ChatOllama
 from rich.console import Console
 from rich.syntax import Syntax
 
-from ..config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMPERATURE
+from ..config import OLLAMA_TEMPERATURE
+from ..llm import get_llm
 from ..logger import log_step
 from ..state import AgentState
 from ..tools.data_extraction_tool import extract_and_clean
@@ -87,11 +87,7 @@ def extractor_node(state: AgentState) -> Dict[str, Any]:
         )
 
     # ── Step 2: LLM summarizes extraction for downstream agents ──────────────
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
-        temperature=OLLAMA_TEMPERATURE,
-    )
+    llm = get_llm(temperature=OLLAMA_TEMPERATURE)
 
     summary_prompt = _SUMMARY_PROMPT.format(
         data_type=cleaned.get("type", input_type),

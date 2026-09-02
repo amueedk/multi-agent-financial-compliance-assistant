@@ -48,8 +48,8 @@ def responder_node(state: AgentState) -> dict:
     Formats the RAG-retrieved docs into a direct answer — no violation checking,
     no human gate, no file writes.
     """
-    from langchain_ollama import ChatOllama
-    from .config import OLLAMA_BASE_URL, OLLAMA_MODEL
+    from .config import OLLAMA_TEMPERATURE
+    from .llm import get_llm
 
     query = state.get("user_query", "")
     docs  = state.get("retrieved_docs", [])
@@ -64,7 +64,7 @@ def responder_node(state: AgentState) -> dict:
     )
 
     try:
-        llm = ChatOllama(base_url=OLLAMA_BASE_URL, model=OLLAMA_MODEL, temperature=0.1)
+        llm = get_llm(temperature=0.1)
         response = llm.invoke(prompt)
         answer = response.content.strip()
     except Exception as e:

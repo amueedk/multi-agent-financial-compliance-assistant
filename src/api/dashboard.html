@@ -482,7 +482,17 @@ function clearResults() {
 
 function showAnswer(txt) {
   const w = document.getElementById('res-wrap');
-  w.innerHTML = `<div class="bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">${esc(txt)}</div>`;
+  w.innerHTML = `<div class="bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm leading-relaxed">${renderMD(txt)}</div>`;
+}
+
+function showCompliant(txt) {
+  const w = document.getElementById('res-wrap');
+  w.innerHTML = `
+    <div class="p-3 rounded-md bg-green-900/10 border-l-4 border-green-500 text-sm text-gray-300 mb-3">
+      <span class="font-bold text-green-400 mr-2 text-xs">✓ NO VIOLATIONS</span>Fully compliant — no policy issues detected.
+    </div>
+    ${txt ? `<div class="bg-gray-800 border border-gray-700 rounded-lg p-4 text-sm leading-relaxed">${renderMD(txt)}</div>` : ''}
+  `;
 }
 
 function addViolation(txt) {
@@ -543,6 +553,10 @@ function handle(data) {
       log(node, ok ? `✓ Verified (pass ${it})` : `✗ Issues found (pass ${it})`);
       document.getElementById('iter-lbl').textContent = `Pass ${it}/3`;
       if(d.critique && !ok) log(node, 'Feedback: '+d.critique.substring(0,100));
+      // Fixes: on a fully-compliant run (no violations), the Results pane
+      // previously stayed stuck on "Analyzing..." forever. Show a clear
+      // compliant state plus the analyst's draft report instead.
+      if (ok && !(d.violations?.length)) showCompliant(d.draft_preview || '');
     }
     if (node === 'responder' && d.final_output) showAnswer(d.final_output);
     if (node === 'actor' && d.final_output) log('actor', d.final_output.substring(0,120));
@@ -668,6 +682,74 @@ async function checkHealth() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Lightweight markdown renderer — headers, bold, bullets, and pipe-tables.
+// LLM output (especially from stronger models like Gemini) commonly includes
+// all of these; rendering them properly avoids showing raw **/##/| characters.
+function renderMD(raw) {
+  const lines = String(raw).split('\n');
+  const html = [];
+  let listOpen = false;
+  let tableRows = null;
+
+  const flushList = () => { if (listOpen) { html.push('</ul>'); listOpen = false; } };
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-100 font-semibold">$1</strong>')
+    .replace(/`(.+?)`/g, '<code class="px-1 py-0.5 rounded bg-gray-900 text-purple-300 text-xs">$1</code>');
+
+  const flushTable = () => {
+    if (!tableRows || !tableRows.length) { tableRows = null; return; }
+    const [headerLine, ...bodyLines] = tableRows;
+    const headers = headerLine.split('|').map(c => c.trim()).filter(Boolean);
+    const rows = bodyLines
+      .filter(l => !/^[\s|:\-]+$/.test(l))
+      .map(l => l.split('|').map(c => c.trim()).filter((c, i, arr) => !(i === 0 && c === '') && !(i === arr.length - 1 && c === '')));
+    html.push('<div class="overflow-x-auto my-2"><table class="w-full text-xs border-collapse">');
+    html.push('<thead><tr class="bg-gray-900/60">' + headers.map(h => `<th class="text-left px-3 py-2 font-semibold text-gray-400 border-b border-gray-700">${inline(h)}</th>`).join('') + '</tr></thead>');
+    html.push('<tbody>' + rows.map(r => '<tr class="border-b border-gray-800/60">' + r.map(c => `<td class="px-3 py-2 text-gray-300">${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody>');
+    html.push('</table></div>');
+    tableRows = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    // Pipe-table row detection (markdown tables use leading/trailing |)
+    if (/^\|.*\|$/.test(trimmed)) {
+      flushList();
+      if (!tableRows) tableRows = [];
+      tableRows.push(trimmed);
+      continue;
+    } else if (tableRows) {
+      flushTable();
+    }
+
+    if (!trimmed) { flushList(); continue; }
+
+    const h = trimmed.match(/^(#{1,4})\s+(.*)$/);
+    if (h) {
+      flushList();
+      const level = h[1].length;
+      const size = level <= 2 ? 'text-sm font-bold text-gray-100 mt-3 mb-1' : 'text-xs font-bold text-gray-300 mt-2 mb-1 uppercase tracking-wide';
+      html.push(`<div class="${size}">${inline(h[2])}</div>`);
+      continue;
+    }
+
+    const bullet = trimmed.match(/^[-*•]\s+(.*)$/);
+    if (bullet) {
+      if (!listOpen) { html.push('<ul class="list-disc list-inside space-y-1 my-1">'); listOpen = true; }
+      html.push(`<li class="text-gray-300">${inline(bullet[1])}</li>`);
+      continue;
+    }
+
+    flushList();
+    html.push(`<p class="text-gray-300 leading-relaxed my-1">${inline(trimmed)}</p>`);
+  }
+  flushList();
+  flushTable();
+  return html.join('');
+}
 
 // Save original icons
 document.querySelectorAll('[id^="pc-"]').forEach(el => el.dataset.orig = el.textContent);

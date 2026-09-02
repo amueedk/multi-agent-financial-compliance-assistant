@@ -11,10 +11,10 @@ import json
 from typing import Any, Dict, List
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from rich.console import Console
 
-from ..config import OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TEMPERATURE
+from ..config import OLLAMA_TEMPERATURE
+from ..llm import get_llm
 from ..logger import log_step
 from ..state import AgentState
 
@@ -30,8 +30,11 @@ Analysis pass #{iteration} of 3 maximum.
 
 ## IMPORTANT: Trust the Pre-Computed Flags
 The Python extraction sandbox has already computed all math-based policy checks.
-The field `python_computed_violations` lists EXACTLY which violations were found.
+The field `python_computed_violations` lists EXACTLY which actual violations were found.
 Do NOT do your own math. Do NOT invent violations not listed. Do NOT cite amounts that are not in the data.
+
+Important distinction: `high_risk_transactions` and `requires_manual_review` are review flags, not actual policy violations.
+If there are no actual violations, but there are high-risk entries, say exactly that: "No policy violations detected; elevated-risk items require manual review."
 
 ## Cleaned Financial Data
 {data_summary}
@@ -40,9 +43,9 @@ Do NOT do your own math. Do NOT invent violations not listed. Do NOT cite amount
 {policy_context}
 
 ## Your Task
-1. Use the `python_computed_violations` list as your SINGLE SOURCE OF TRUTH for violations.
+1. Use the `python_computed_violations` list as your SINGLE SOURCE OF TRUTH for actual violations.
 2. For each violation in that list, write one row in the findings table and one bullet in Identified Violations.
-3. If `is_compliant` is true and the violations list is empty, state the invoice is fully compliant. Do NOT add violations.
+3. If `python_computed_violations` is empty and `is_compliant` is true, say "No policy violations detected" and, if `requires_manual_review` or `high_risk_transactions` exists, explicitly state that elevated-risk items require manual review rather than calling them violations.
 4. Cite the correct policy section from the Retrieved Policy Sections for each finding.
 5. DO NOT hallucinate violations, amounts, or vendor names not present in the data.
 
@@ -77,11 +80,7 @@ def analyst_node(state: AgentState) -> Dict[str, Any]:
     Produces a structured draft compliance report with violations table.
     Incorporates Critic feedback on revision passes.
     """
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
-        temperature=OLLAMA_TEMPERATURE,
-    )
+    llm = get_llm(temperature=OLLAMA_TEMPERATURE)
 
     cleaned = state.get("cleaned_data", {})
     retrieved_docs = state.get("retrieved_docs", [])
@@ -101,7 +100,9 @@ def analyst_node(state: AgentState) -> Dict[str, Any]:
                 "total_records": cleaned.get("record_count"),
                 "total_spend_usd": cleaned.get("total_absolute_spend"),
                 "high_risk_transactions": cleaned.get("high_risk_transactions", []),
+                "requires_manual_review": cleaned.get("requires_manual_review", False),
                 "vendor_spend_summary": cleaned.get("vendor_spend_summary", {}),
+                "python_computed_violations": cleaned.get("python_computed_violations", []),
             },
             indent=2,
             default=str,
@@ -128,7 +129,8 @@ def analyst_node(state: AgentState) -> Dict[str, Any]:
     # Include critique on revision passes
     critique_section = ""
     if critique and iteration > 0:
-        critique_section = _CRITIQUE_SECTION_TEMPLATE.format(critique=critique[:600])
+        critique_section = _CRITIQUE_SECTION_TEMPLATE.format(
+            critique=critique[:600])
 
     prompt = _ANALYST_PROMPT.format(
         iteration=iteration + 1,
@@ -151,16 +153,16 @@ def analyst_node(state: AgentState) -> Dict[str, Any]:
     python_violations = cleaned.get("python_computed_violations", [])
     is_compliant_flag = cleaned.get("is_compliant", None)
 
-    if python_violations is not None and data_type == "invoice":
-        # For invoices: use the Python-computed list directly.
+    if python_violations is not None and data_type in {"invoice", "csv_transactions"}:
+        # For both invoice and CSV data, use the Python-computed list directly.
         # Filter out the COMPLIANT marker — it's not a violation.
         violations = [
             v for v in python_violations
             if not v.upper().startswith("COMPLIANT")
         ]
     else:
-        # For CSV transactions: parse the LLM's draft output.
-        # Skip lines that sound compliant/within-limits to avoid false positives.
+        # Fallback for plain-query flows: parse the LLM draft output only when no
+        # deterministic violation set exists.
         _skip_phrases = [
             "within limits", "is compliant", "no violation", "acceptable",
             "fully compliant", "does not exceed", "not a violation",

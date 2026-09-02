@@ -77,7 +77,8 @@ def _normalize_date(raw: str) -> str:
 
 def _normalize_amount(raw: Any) -> Optional[float]:
     """Strip whitespace, commas, currency symbols; cast to float."""
-    cleaned = str(raw).strip().replace(",", "").replace("$", "").replace(" ", "")
+    cleaned = str(raw).strip().replace(
+        ",", "").replace("$", "").replace(" ", "")
     try:
         return float(cleaned)
     except ValueError:
@@ -113,17 +114,20 @@ def clean_csv_data(csv_text: str) -> Dict[str, Any]:
     # 2. Strip all string cell values
     for col in df.select_dtypes(include="object").columns:
         df[col] = df[col].astype(str).str.strip()
-    cleaning_notes.append("Stripped leading/trailing whitespace from all string cells")
+    cleaning_notes.append(
+        "Stripped leading/trailing whitespace from all string cells")
 
     # 3. Normalize date column
     if "Txn_Date" in df.columns:
         df["Txn_Date"] = df["Txn_Date"].apply(_normalize_date)
-        cleaning_notes.append("Normalized Txn_Date to ISO YYYY-MM-DD (handled 7 different source formats)")
+        cleaning_notes.append(
+            "Normalized Txn_Date to ISO YYYY-MM-DD (handled 7 different source formats)")
 
     # 4. Normalize amount column (strip spaces, commas, currency symbols)
     if "Amt" in df.columns:
         df["Amt"] = df["Amt"].apply(_normalize_amount)
-        cleaning_notes.append("Converted Amt to numeric float (removed spaces, commas)")
+        cleaning_notes.append(
+            "Converted Amt to numeric float (removed spaces, commas)")
 
     # 5. Standardize vendor descriptions (uppercase + collapse whitespace)
     if "Vendor_Desc" in df.columns:
@@ -133,7 +137,8 @@ def clean_csv_data(csv_text: str) -> Dict[str, Any]:
             .str.replace(r"\s+", " ", regex=True)
             .str.strip()
         )
-        cleaning_notes.append("Uppercased Vendor_Desc and collapsed internal whitespace")
+        cleaning_notes.append(
+            "Uppercased Vendor_Desc and collapsed internal whitespace")
 
     # 6. Normalize status to uppercase
     if "Status" in df.columns:
@@ -142,22 +147,27 @@ def clean_csv_data(csv_text: str) -> Dict[str, Any]:
 
     # 7. Fill missing Ref_IDs with UNKNOWN
     if "Ref_ID" in df.columns:
-        df["Ref_ID"] = df["Ref_ID"].replace({"nan": None, "": None}).fillna("UNKNOWN")
+        df["Ref_ID"] = df["Ref_ID"].replace(
+            {"nan": None, "": None}).fillna("UNKNOWN")
         cleaning_notes.append("Replaced missing Ref_IDs with 'UNKNOWN'")
 
     # 8. Fill missing Dept_Code with UNSPECIFIED
     if "Dept_Code" in df.columns:
-        df["Dept_Code"] = df["Dept_Code"].replace({"nan": None, "": None}).fillna("UNSPECIFIED")
+        df["Dept_Code"] = df["Dept_Code"].replace(
+            {"nan": None, "": None}).fillna("UNSPECIFIED")
         cleaning_notes.append("Replaced missing Dept_Code with 'UNSPECIFIED'")
 
     # Serialize (replace NaN with None for JSON safety)
-    records: List[Dict] = df.where(pd.notna(df), None).to_dict(orient="records")
+    records: List[Dict] = df.where(
+        pd.notna(df), None).to_dict(orient="records")
 
     # Identify high-risk transactions (|amount| > $2,000 per policy Section 4.2.1)
+    # Important: these are REVIEW FLAGS, not automatic violations.
     high_risk = [
         r for r in records
         if isinstance(r.get("Amt"), (int, float)) and abs(r["Amt"]) > 2000
     ]
+    requires_manual_review = bool(high_risk)
 
     # Compute total absolute spend
     total_spend = sum(
@@ -169,18 +179,57 @@ def clean_csv_data(csv_text: str) -> Dict[str, Any]:
     # Vendor spend summary
     vendor_spend: Dict[str, float] = {}
     for r in records:
-        vendor = str(r.get("Vendor_Desc", "UNKNOWN"))
+        vendor = str(r.get("Vendor_Desc", "UNKNOWN")).strip() or "UNKNOWN"
         amt = r.get("Amt")
         if isinstance(amt, (int, float)):
-            vendor_spend[vendor] = round(vendor_spend.get(vendor, 0.0) + abs(amt), 2)
+            vendor_spend[vendor] = round(
+                vendor_spend.get(vendor, 0.0) + abs(amt), 2)
+
+    # Deterministic CSV policy checks: same model as invoice path, computed in Python.
+    violation_summary: List[str] = []
+    missing_vendor_records = [
+        r for r in records
+        if str(r.get("Vendor_Desc", "")).strip().upper() in {"", "UNKNOWN", "UNSPECIFIED", "N/A"}
+    ]
+    if missing_vendor_records:
+        for r in missing_vendor_records:
+            ref_id = r.get("Ref_ID") or "UNKNOWN"
+            violation_summary.append(
+                f"CRITICAL: Record {ref_id} has an unknown or blank vendor name and is not eligible for payment review."
+            )
+
+    expensive_vendors = {
+        vendor: total
+        for vendor, total in vendor_spend.items()
+        if total > 5000.0
+    }
+    if expensive_vendors:
+        for vendor, total in sorted(expensive_vendors.items()):
+            violation_summary.append(
+                f"REQUIRES VP AUTHORIZATION: Vendor {vendor} exceeds the $5,000 monthly authorization threshold with ${total:,.2f}."
+            )
+
+    if not violation_summary:
+        # Intentionally leave the list empty for a compliant result.
+        # High-risk review items are tracked separately via high_risk_transactions.
+        violation_summary = []
+
+    is_compliant = not any(
+        item.upper().startswith("CRITICAL:") or item.upper(
+        ).startswith("REQUIRES VP AUTHORIZATION:")
+        for item in violation_summary
+    )
 
     return {
         "type": "csv_transactions",
         "record_count": len(records),
         "records": records,
         "high_risk_transactions": high_risk,
+        "requires_manual_review": requires_manual_review,
         "vendor_spend_summary": vendor_spend,
         "total_absolute_spend": round(total_spend, 2),
+        "is_compliant": is_compliant,
+        "python_computed_violations": violation_summary,
         "cleaning_notes": cleaning_notes,
     }
 
@@ -198,7 +247,8 @@ def _ocr_normalize(text: str) -> str:
     text = re.sub(r'(?<=\d)O(?=\s*[\-\/])', '0', text)
     text = re.sub(r'(?<=[\-\/])O(?=\d)', '0', text)
     # Collapse spaces inside dollar amounts: '$ 1 , 8 0 0 . 0 0' → '$1,800.00'
-    text = re.sub(r'\$\s+((?:\d[\d ,\.]*\d|\d))', lambda m: '$' + m.group(1).replace(' ', ''), text)
+    text = re.sub(r'\$\s+((?:\d[\d ,\.]*\d|\d))',
+                  lambda m: '$' + m.group(1).replace(' ', ''), text)
     return text
 
 
@@ -214,7 +264,8 @@ def clean_invoice_data(invoice_text: str) -> Dict[str, Any]:
     """
     raw_text = invoice_text.strip()
     text = _ocr_normalize(raw_text)   # Apply OCR fixes first
-    cleaning_notes: List[str] = ['Applied OCR normalization (O→0, spaced digit collapse)']
+    cleaning_notes: List[str] = [
+        'Applied OCR normalization (O→0, spaced digit collapse)']
 
     # ── Invoice Number ──────────────────────────────────────────────────────────
     inv_match = re.search(
@@ -234,7 +285,8 @@ def clean_invoice_data(invoice_text: str) -> Dict[str, Any]:
     raw_date = date_match.group(1).strip() if date_match else "UNKNOWN"
     # Second-pass OCR fix: O→0 in the extracted date value itself
     raw_date = re.sub(r'O', '0', raw_date)
-    invoice_date = _normalize_date(raw_date) if raw_date != "UNKNOWN" else "UNKNOWN"
+    invoice_date = _normalize_date(
+        raw_date) if raw_date != "UNKNOWN" else "UNKNOWN"
     cleaning_notes.append(f"Date normalized: '{raw_date}' → '{invoice_date}'")
 
     # ── Vendor (handles "Vndor:", "Vendor:", "FROM:", "-- Vendor --", or first non-empty header line) ──
@@ -254,7 +306,8 @@ def clean_invoice_data(invoice_text: str) -> Dict[str, Any]:
             candidate = re.sub(r'(?<=[A-Z]) (?=[A-Z])', '', first_lines[0])
             candidate = re.sub(r'[\-\*=]+', '', candidate).strip()
             if len(candidate) > 2:
-                vendor_match = type('m', (), {'group': lambda self, n: candidate})()
+                vendor_match = type(
+                    'm', (), {'group': lambda self, n: candidate})()
     vendor = vendor_match.group(1).strip() if vendor_match else "UNKNOWN"
     # Remove trailing punctuation/commas
     vendor = re.sub(r"[,\.\s]+$", "", vendor)
@@ -271,8 +324,10 @@ def clean_invoice_data(invoice_text: str) -> Dict[str, Any]:
     )
     if not amount_match:
         # Fallback: look for Amount: or any $-prefixed number
-        amount_match = re.search(r"Amount\s*:\s*\$?\s*([\d,\.]+)", text, re.IGNORECASE)
-    amount_str = amount_match.group(1).replace(",", "").strip() if amount_match else "0"
+        amount_match = re.search(
+            r"Amount\s*:\s*\$?\s*([\d,\.]+)", text, re.IGNORECASE)
+    amount_str = amount_match.group(1).replace(
+        ",", "").strip() if amount_match else "0"
     try:
         total_amount = float(amount_str)
     except ValueError:
@@ -302,11 +357,12 @@ def clean_invoice_data(invoice_text: str) -> Dict[str, Any]:
 
     # ── Deterministic policy violation flags (computed in Python, NOT by the LLM) ──
     # These flags are the ground truth. The Analyst only writes prose around them.
-    exceeds_2000_threshold  = total_amount > 2000.0
-    exceeds_5000_threshold  = total_amount > 5000.0
-    payment_terms_violation = (payment_terms == "Due Upon Receipt") and exceeds_2000_threshold
-    requires_vp_auth        = exceeds_5000_threshold
-    is_compliant            = not payment_terms_violation and not requires_vp_auth
+    exceeds_2000_threshold = total_amount > 2000.0
+    exceeds_5000_threshold = total_amount > 5000.0
+    payment_terms_violation = (
+        payment_terms == "Due Upon Receipt") and exceeds_2000_threshold
+    requires_vp_auth = exceeds_5000_threshold
+    is_compliant = not payment_terms_violation and not requires_vp_auth
 
     violation_summary: List[str] = []
     if exceeds_5000_threshold:
@@ -357,7 +413,8 @@ def detect_input_type(raw_data: str) -> str:
     """
     first_line = raw_data.strip().split("\n")[0].lower()
 
-    csv_keywords = {"txn_date", "ref_id", "vendor_desc", "amt", "status", "dept_code"}
+    csv_keywords = {"txn_date", "ref_id",
+                    "vendor_desc", "amt", "status", "dept_code"}
     if "," in first_line and any(kw in first_line for kw in csv_keywords):
         return "csv"
 

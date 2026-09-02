@@ -1,6 +1,6 @@
 # Multi-Agent Compliance Research & Action Assistant
 
-Local multi-agent system for corporate compliance checking. Built with LangGraph, Ollama, FAISS RAG, and a FastAPI dashboard. Runs on CPU with no cloud LLM APIs.
+Local-first multi-agent system for corporate compliance checking. Built with LangGraph, Ollama, FAISS RAG, and a FastAPI dashboard. The default path is local Ollama on CPU, while Gemini API models can also be enabled for testing or stronger cloud-backed runs.
 
 ## Architecture
 
@@ -53,9 +53,9 @@ Raw Messy Input (CSV Ledger / Invoice Text / Plain Query)
 ### 1. Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.ai) installed and running
+- [Ollama](https://ollama.ai) installed and running for the default local-first setup
 - Pull the default testing model: `ollama pull qwen2.5:3b`
-  *(Note: While `qwen2.5:3b` is used for lightweight CPU testing, you can use a larger, more capable model like `qwen2.5:7b` or `llama3.1:8b` in `.env` for significantly improved reasoning and JSON adherence.)*
+  *(Note: While `qwen2.5:3b` is used for lightweight CPU testing, you can use a larger model like `qwen2.5:7b` or `llama3.1:8b` in `.env`. Gemini API is also supported for testing by setting `LLM_PROVIDER=gemini` and a valid `GOOGLE_API_KEY`.)*
 
 ### 2. Install
 
@@ -72,7 +72,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` if you need a different model, port, or embedding settings.
+Edit `.env` if you need a different local model, optional Gemini API config, port, or embedding settings. The default provider remains Ollama unless you explicitly switch to Gemini for a cloud-backed test run.
 
 ### 4. Generate Sample Data
 

@@ -17,10 +17,18 @@ load_dotenv()
 # ── Base Directory ─────────────────────────────────────────────────────────────
 BASE_DIR: Path = Path(__file__).parent.parent
 
-# ── Ollama / LLM ──────────────────────────────────────────────────────────────
+# ── LLM Provider ──────────────────────────────────────────────────────────────
+# "ollama" → local model via Ollama (default, local-first)
+# "gemini" → Google Gemini via API (optional for testing, needs GOOGLE_API_KEY)
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama").lower()
+
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 OLLAMA_TEMPERATURE: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.3"))
+
+GOOGLE_API_KEY: str = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
 PLANNER_TEMPERATURE: float = 0.1   # Very deterministic for task decomposition
 CRITIC_TEMPERATURE: float = 0.1    # Strict verification
 
@@ -46,8 +54,10 @@ CHUNK_SIZE: int = 512
 CHUNK_OVERLAP: int = 64
 
 # ── Agent Execution ───────────────────────────────────────────────────────────
-MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "3"))   # Critic retry cap
-LLM_TIMEOUT: int = 120                                          # seconds per LLM call
+MAX_ITERATIONS: int = int(
+    os.getenv("MAX_ITERATIONS", "3"))   # Critic retry cap
+# seconds per LLM call
+LLM_TIMEOUT: int = 120
 
 # ── FastAPI Dashboard ─────────────────────────────────────────────────────────
 API_HOST: str = os.getenv("API_HOST", "0.0.0.0")

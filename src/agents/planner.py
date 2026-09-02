@@ -11,11 +11,11 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_ollama import ChatOllama
 from rich.console import Console
 from rich.panel import Panel
 
-from ..config import OLLAMA_BASE_URL, OLLAMA_MODEL, PLANNER_TEMPERATURE
+from ..config import PLANNER_TEMPERATURE
+from ..llm import get_llm
 from ..logger import log_step
 from ..state import AgentState
 
@@ -55,11 +55,7 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     Decomposes the user query into a 5-step execution plan.
     Uses temperature=0.1 for maximum determinism.
     """
-    llm = ChatOllama(
-        base_url=OLLAMA_BASE_URL,
-        model=OLLAMA_MODEL,
-        temperature=PLANNER_TEMPERATURE,
-    )
+    llm = get_llm(temperature=PLANNER_TEMPERATURE)
 
     input_type = state.get("raw_input_type", "query")
     if not input_type or input_type == "auto":
